@@ -7,11 +7,9 @@ interface MogooseConnection {
   promise: Promise<Mongoose> | null;
 }
 
-//@ts-ignore
 let cached: MogooseConnection = (global as any).mongoose;
 
 if (!cached) {
-  //@ts-ignore
   cached = (global as any).mongoose = { conn: null, promise: null };
 }
 
