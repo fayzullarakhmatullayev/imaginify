@@ -1,8 +1,8 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { transformer, z } from "zod";
+import { z } from "zod";
 
 import { Form } from "@/components/ui/form";
 import { CustomField } from "@/components/shared/CustomField";
@@ -18,6 +18,7 @@ import {
 
 import {
   aspectRatioOptions,
+  creditFee,
   defaultValues,
   transformationTypes,
 } from "@/constants";
@@ -25,6 +26,11 @@ import { AspectRatioKey, debounce, deepMergeObjects } from "@/utils";
 import { updateCredits } from "@/lib/actions/user.actions";
 import MediaUploader from "@/components/shared/MediaUploader";
 import TransformedImage from "@/components/shared/TransformedImage";
+import { getCldImageUrl } from "next-cloudinary";
+import { useToast } from "@/hooks/use-toast";
+import { addImage, updateImage } from "@/lib/actions/image.actions";
+import { useRouter } from "next/navigation";
+import InsufficientCreditsModal from "@/components/shared/InsufficientCreditsModal";
 
 export const formSchema = z.object({
   title: z.string(),
@@ -40,9 +46,11 @@ const TransformationForm = ({
   userId,
   type,
   creditBalance,
-  config,
+  config = null,
 }: TransformationFormProps) => {
   const transformationType = transformationTypes[type];
+  const { toast } = useToast();
+  const router = useRouter();
 
   const [image, setImage] = useState(data);
   const [newTransformation, setNewTransformation] =
@@ -69,8 +77,88 @@ const TransformationForm = ({
     defaultValues: initialValues,
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log(values);
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setSubmitting(true);
+    if (data || image) {
+      const transformationUrl = getCldImageUrl({
+        width: image?.width,
+        height: image?.height,
+        src: image?.publicId,
+        ...transformationConfig,
+      });
+
+      const imageData = {
+        title: values?.title,
+        publicId: values?.publicId,
+        transformationType: type,
+        width: image?.width,
+        height: image?.height,
+        config: transformationConfig,
+        secureURL: image?.secureURL,
+        transformationURL: transformationUrl,
+        aspectRatio: values?.aspectRatio,
+        prompt: values?.prompt,
+        color: values?.color,
+      };
+
+      if (action === "Add") {
+        try {
+          const newImage = await addImage({
+            image: imageData,
+            userId,
+            path: "/",
+          });
+          if (newImage) {
+            form.reset();
+            setImage(data);
+            toast({
+              title: "Success",
+              description: "Image successfully added",
+              duration: 5000,
+              className: "success-toast",
+            });
+            router.push(`/transformations/${newImage.id}`);
+          }
+        } catch (err) {
+          toast({
+            title: "Something went wrong while submitting form",
+            description: "Please try again",
+            duration: 5000,
+            className: "error-toast",
+          });
+          console.error(err);
+        }
+      }
+
+      if (action === "Update") {
+        try {
+          const updatedImage = await updateImage({
+            image: { ...imageData, _id: data._id },
+            userId,
+            path: `/transformations/${data._id}`,
+          });
+
+          if (updatedImage) {
+            toast({
+              title: "Success",
+              description: "Image successfully updated",
+              duration: 5000,
+              className: "success-toast",
+            });
+            router.push(`/transformations/${updatedImage.id}`);
+          }
+        } catch (err) {
+          toast({
+            title: "Something went wrong while updating form",
+            description: "Please try again",
+            duration: 5000,
+            className: "error-toast",
+          });
+          console.error(err);
+        }
+      }
+    }
+    setSubmitting(false);
   }
 
   const onSelectFieldHandler = (
@@ -106,19 +194,39 @@ const TransformationForm = ({
 
     return onChangeField(value);
   };
-  // TODO: Return to update credits
-  const onTransformHandler = () => {
+
+  const onTransformHandler = async () => {
+    if (!userId) {
+      return toast({
+        title: "User not found",
+        description: "Please try again",
+        duration: 5000,
+        className: "error-toast",
+      });
+    }
     setIsTransforming(true);
-    deepMergeObjects(newTransformation, transformationConfig);
+
+    setTransformationConfig(
+      deepMergeObjects(newTransformation, transformationConfig),
+    );
+
     setNewTransformation(null);
+
     startTransition(async () => {
-      // await updateCredits(userId, creditFee);
+      await updateCredits(userId, creditFee);
     });
   };
+
+  useEffect(() => {
+    if (image && (type === "restore" || type === "removeBackground")) {
+      setNewTransformation(transformationType.config);
+    }
+  }, [image, transformationType.config, type]);
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        {creditBalance < Math.abs(creditFee) && <InsufficientCreditsModal />}
         <CustomField
           control={form.control}
           name={"title"}
@@ -239,7 +347,7 @@ const TransformationForm = ({
             className={"submit-button capitalize"}
             disabled={submitting}
           >
-            Submit
+            {submitting ? "Submitting..." : "Save Image"}
           </Button>
         </div>
       </form>
