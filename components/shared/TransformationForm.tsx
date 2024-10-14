@@ -117,7 +117,7 @@ const TransformationForm = ({
               duration: 5000,
               className: "success-toast",
             });
-            router.push(`/transformations/${newImage.id}`);
+            router.push(`/transformations/${newImage._id}`);
           }
         } catch (err) {
           toast({
@@ -145,7 +145,7 @@ const TransformationForm = ({
               duration: 5000,
               className: "success-toast",
             });
-            router.push(`/transformations/${updatedImage.id}`);
+            router.push(`/transformations/${updatedImage._id}`);
           }
         } catch (err) {
           toast({
@@ -190,7 +190,7 @@ const TransformationForm = ({
           [fieldName === "prompt" ? "prompt" : "to"]: value,
         },
       }));
-    }, 1000);
+    }, 1000)();
 
     return onChangeField(value);
   };
@@ -245,6 +245,7 @@ const TransformationForm = ({
                 onValueChange={(value) =>
                   onSelectFieldHandler(value, field.onChange)
                 }
+                value={field.value}
               >
                 <SelectTrigger className="select-field">
                   <SelectValue placeholder="Select size" />
